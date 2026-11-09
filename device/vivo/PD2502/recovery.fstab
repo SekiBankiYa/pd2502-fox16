@@ -1,0 +1,14 @@
+# fstab for vivo PD2502 (A/B, MT6993, FBE v2 + metadata encryption)
+/dev/block/by-name/boot_a          /boot        emmc    defaults                             slotselect
+/dev/block/by-name/init_boot_a     /init_boot   emmc    defaults                             slotselect
+/dev/block/by-name/vendor_boot_a   /vendor_boot emmc    defaults                             slotselect
+/dev/block/by-name/dtbo_a          /dtbo        emmc    defaults                             slotselect
+/dev/block/by-name/vbmeta_a        /vbmeta      emmc    defaults                             slotselect
+/dev/block/by-name/metadata        /metadata    f2fs    noatime,nosuid,nodev,discard         wait,check,formattable,first_stage_mount
+/dev/block/by-name/metadata        /metadata    ext4    noatime,nosuid,nodev,discard         wait,check,formattable
+/dev/block/by-name/userdata        /data        f2fs    noatime,nosuid,nodev,discard,inlinecrypt wait,check,formattable,fileencryption=aes-256-xts:aes-256-cts:v2+inlinecrypt_optimized,keydirectory=/metadata/vold/metadata_encryption
+/dev/block/by-name/userdata        /data        ext4    noatime,nosuid,nodev,inlinecrypt,errors=panic wait,check,fileencryption=aes-256-xts:aes-256-cts:v2+inlinecrypt_optimized,keydirectory=/metadata/vold/metadata_encryption
+/dev/block/by-name/persist         /persist     ext4    noatime,nosuid,nodev
+/dev/block/by-name/misc            /misc        emmc    defaults
+/dev/block/by-name/external_sd     /external_sd vfat    /dev/block/mmcblk0p1                 /dev/block/mmcblk0
+/dev/block/by-name/usb_otg         /usb_otg     vfat    /dev/block/sda1                      /dev/block/sda
