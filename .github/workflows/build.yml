@@ -7,12 +7,21 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
-    timeout-minutes: 350
+    timeout-minutes: 355
     steps:
-      - name: Free disk space
+      - name: Maximize disk (aggressive)
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc || true
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /opt/hostedtoolcache/CodeQL /usr/local/share/boost \
+                      /usr/share/swift /opt/microsoft /usr/local/.ghcup \
+                      /usr/lib/jvm /usr/local/share/chromium /usr/lib/mono \
+                      /opt/google/chrome /usr/share/miniconda /usr/local/go 2>/dev/null || true
+          sudo apt-get clean
+          docker system prune -af || true
+          sudo swapoff -a || true
+          sudo rm -f /swapfile /mnt/swapfile || true
           df -h
+          echo "--- /mnt ---"; df -h /mnt
 
       - name: Checkout device tree
         uses: actions/checkout@v4
@@ -27,35 +36,55 @@ jobs:
             libelf-dev liblz4-tool libsdl1.2-dev libssl-dev libxml2 libxml2-utils \
             lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python3
 
+      - name: Prepare big workspace on /mnt
+        run: |
+          sudo mkdir -p /mnt/work
+          sudo chown -R $USER:$USER /mnt/work
+          df -h /mnt
+
       - name: Setup repo + sync (TWRP-Test twrp-16.0)
         run: |
           mkdir -p ~/bin && curl -s https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
           chmod a+x ~/bin/repo
+          export PATH=$HOME/bin:$PATH
           git config --global user.name  "ci"
           git config --global user.email "ci@example.com"
-          mkdir -p ~/work && cd ~/work
-          ~/bin/repo init -u https://github.com/TWRP-Test/platform_manifest_twrp_aosp.git -b twrp-16.0 --depth=1
-          ~/bin/repo sync -j$(nproc) --force-sync --no-clone-bundle --no-tags
+          git config --global http.postBuffer 524288000
+          cd /mnt/work
+          ~/bin/repo init -u https://github.com/TWRP-Test/platform_manifest_twrp_aosp.git -b twrp-16.0 --depth=1 --no-clone-bundle
+          ~/bin/repo sync -c -j8 --force-sync --no-clone-bundle --no-tags
+          echo "=== sync done, drop .repo to free space ==="
+          df -h /mnt
+          rm -rf /mnt/work/.repo
+          df -h /mnt
 
       - name: Place device tree
         run: |
-          mkdir -p ~/work/device/vivo
-          cp -r $GITHUB_WORKSPACE/device-tree/device/vivo/PD2502 ~/work/device/vivo/PD2502
+          mkdir -p /mnt/work/device/vivo
+          cp -r $GITHUB_WORKSPACE/device-tree/device/vivo/PD2502 /mnt/work/device/vivo/PD2502
 
       - name: Build recovery
         run: |
-          cd ~/work
+          cd /mnt/work
           source build/envsetup.sh
           export ALLOW_MISSING_DEPENDENCIES=true
           export LC_ALL=C
+          export USE_CCACHE=1
+          export CCACHE_EXEC=/usr/bin/ccache
           lunch omni_PD2502-eng
-          mka recoveryimage -j$(nproc) || mka vendorbootimage -j$(nproc)
+          mka vendorbootimage -j$(nproc)
+          df -h /mnt
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p $GITHUB_WORKSPACE/out
+          cp /mnt/work/out/target/product/PD2502/vendor_boot.img $GITHUB_WORKSPACE/out/ 2>/dev/null || true
+          cp /mnt/work/out/target/product/PD2502/recovery.img    $GITHUB_WORKSPACE/out/ 2>/dev/null || true
+          ls -l $GITHUB_WORKSPACE/out || true
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: PD2502-recovery
-          path: |
-            ~/work/out/target/product/PD2502/recovery.img
-            ~/work/out/target/product/PD2502/vendor_boot.img
+          path: out/
           if-no-files-found: warn
